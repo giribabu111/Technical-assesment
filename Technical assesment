@@ -1,0 +1,284 @@
+Problem Statements 1:
+Title: Containerisation and Deployment of Wisecow Application on Kubernetes
+1. Dockerization
+Dockerfile
+•	Create a Dockerfile in the root directory of your Wisecow application repository:
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Make port 80 available to the world outside this container
+EXPOSE 80
+
+# Define environment variable
+ENV NAME Wisecow
+
+# Run app.py when the container launches
+CMD ["python", "app.py"]
+2. Kubernetes Deployment
+Kubernetes Manifest Files
+•	Create a directory named k8s in your repository and add the following files:
+Deployment (k8s/deployment.yaml)
+Code:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wisecow-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: wisecow
+  template:
+    metadata:
+      labels:
+        app: wisecow
+    spec:
+      containers:
+      - name: wisecow
+        image: <YOUR_DOCKERHUB_USERNAME>/wisecow:latest
+        ports:
+        - containerPort: 80
+Service (k8s/service.yaml)
+apiVersion: v1
+kind: Service
+metadata:
+  name: wisecow-service
+spec:
+  selector:
+    app: wisecow
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+Ingress (k8s/ingress.yaml)
+To enable TLS, we need to set up an Ingress resource. This example assumes you're using cert-manager for automatic TLS certificate management.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wisecow-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  rules:
+  - host: <YOUR_DOMAIN>
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wisecow-service
+•	port:
+              number: 80
+  tls:
+  - hosts:
+    - <YOUR_DOMAIN>
+    secretName: wisecow-tls
+3. CI/CD Pipeline
+GitHub Actions Workflow
+Create a directory .github/workflows in your repository and add a workflow file ci-cd.yaml:
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      run: |
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/wisecow:latest .
+        docker push ${{ secrets.DOCKER_USERNAME }}/wisecow:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v1
+      with:
+        version: 'v1.18.0'
+
+    - name: Configure kubectl
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      run: |
+        echo "${KUBE_CONFIG_DATA}" | base64 --decode > $HOME/.kube/config
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/ingress.yaml
+4. TLS Implementation
+Cert-Manager ClusterIssuer
+Use cert-manager to automate the issuance and renewal of TLS certificates. First, install cert-manager on your Kubernetes cluster and then create a ClusterIssuer for Let's Encrypt:
+ClusterIssuer (k8s/cluster-issuer.yaml)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: <YOUR_EMAIL>
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+Apply the ClusterIssuer to your Kubernetes cluster:
+kubectl apply -f k8s/cluster-issuer.yaml
+5. Access Control
+Set your GitHub repository to public and add the following secrets in the GitHub repository settings:
+1.	DOCKER_USERNAME: Your Docker Hub username.
+2.	DOCKER_PASSWORD: Your Docker Hub password.
+3.	KUBE_CONFIG_DATA: Base64 encoded kubeconfig file for accessing your Kubernetes cluster.
+By following these steps, you will have a fully containerized Wisecow application deployed on a Kubernetes environment with a CI/CD pipeline and secured TLS communication. The application will automatically build, push, and deploy updates whenever changes are committed to the repository.
+Make sure to replace placeholders such as <YOUR_DOCKERHUB_USERNAME>, <YOUR_DOMAIN>, and <YOUR_EMAIL> with your actual values. This setup ensures that your Wisecow application is robustly containerized, deployed, and maintained with industry-standard practices, including secure communication and automated deployments.
+
+Problem Statement 2 :
+Please choose any two objectives from the list below and attempt to achieve them
+using either Bash or Python.
+I'll tackle the following two objectives using Python:
+1.	System Health Monitoring Script
+2.	Application Health Checker
+Objective 1: System Health Monitoring Script
+The following Python script monitors the health of a Linux system by checking CPU usage, memory usage, disk space, and running processes. It sends an alert to the console if any of these metrics exceed predefined thresholds.
+import psutil
+import logging
+
+# Set up logging
+logging.basicConfig(filename='system_health.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+# Thresholds
+CPU_THRESHOLD = 80
+MEMORY_THRESHOLD = 80
+DISK_THRESHOLD = 80
+
+def check_cpu_usage():
+    usage = psutil.cpu_percent(interval=1)
+    if usage > CPU_THRESHOLD:
+        alert(f"High CPU usage detected: {usage}%")
+    return usage
+
+def check_memory_usage():
+    memory = psutil.virtual_memory()
+    usage = memory.percent
+    if usage > MEMORY_THRESHOLD:
+        alert(f"High memory usage detected: {usage}%")
+    return usage
+
+def check_disk_usage():
+    disk = psutil.disk_usage('/')
+    usage = disk.percent
+    if usage > DISK_THRESHOLD:
+        alert(f"High disk usage detected: {usage}%")
+    return usage
+
+def check_running_processes():
+    processes = [p.info for p in psutil.process_iter(attrs=['pid', 'name'])]
+    return processes
+
+def alert(message):
+    logging.info(message)
+    print(message)
+
+def main():
+    cpu = check_cpu_usage()
+    memory = check_memory_usage()
+    disk = check_disk_usage()
+    processes = check_running_processes()
+
+    print(f"CPU usage: {cpu}%")
+    print(f"Memory usage: {memory}%")
+    print(f"Disk usage: {disk}%")
+    print(f"Running processes: {len(processes)}")
+
+if __name__ == "__main__":
+    main()
+Objective 4: Application Health Checker
+The following Python script checks the uptime of an application by sending an HTTP request and checking the HTTP status code. If the status code is 200, the application is considered 'up'. If the status code is different, the application is considered 'down'.
+import requests
+import logging
+from datetime import datetime
+
+# Set up logging
+logging.basicConfig(filename='app_health.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+# URL of the application
+APP_URL = 'http://your-application-url.com'
+
+def check_application_health(url):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            status = 'up'
+        else:
+            status = 'down'
+        log_status(status, response.status_code)
+        return status
+    except requests.exceptions.RequestException as e:
+        log_status('down', str(e))
+        return 'down'
+
+def log_status(status, detail):
+    message = f"Application is {status}. Detail: {detail}"
+    logging.info(message)
+    print(message)
+
+def main():
+    status = check_application_health(APP_URL)
+    print(f"Application status: {status}")
+
+if __name__ == "__main__":
+    main()
+How to Use These Scripts
+1.	System Health Monitoring Script
+o	Save the script as system_health_monitor.py.
+o	Install the psutil library using pip install psutil.
+o	Run the script using python system_health_monitor.py.
+2.	Application Health Checker
+o	Save the script as application_health_checker.py.
+o	Install the requests library using pip install requests.
+o	Update the APP_URL variable with the URL of your application.
+o	Run the script using python application_health_checker.py.
+Both scripts will log their outputs to respective log files (system_health.log and app_health.log) and print alerts to the console when thresholds are exceeded or the application is down.
+
+
+
+
+
+
